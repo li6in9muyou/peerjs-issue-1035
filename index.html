@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>peerjs #1035</title>
+  </head>
+  <body>
+    <h1>Open dev tools, read console output</h1>
+    <audio src="chrome.webm" contronls id="sourceAudio"></audio>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script type="module">
+      sourceAudio.addEventListener("canplay", async () => {
+        const source = sourceAudio.captureStream();
+        const audioTrack = source
+          .getTracks()
+          .filter((t) => t.kind === "audio")[0];
+        console.log("source ready", audioTrack, source.getTracks());
+
+        const doCallPeer = new Peer("peerjs-issue-1035-doCall");
+        doCallPeer.on("open", (id) => {
+          console.log("doCallPeer on open", id);
+          const call = doCallPeer.call(
+            "peerjs-issue-1035-getCalled",
+            new MediaStream([audioTrack])
+          );
+          call.on("stream", (stream) => {
+            console.log("doCall on stream", stream.getTracks());
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
