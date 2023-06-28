@@ -7,27 +7,89 @@
   </head>
   <body>
     <h1>Open dev tools, read console output</h1>
-    <audio src="chrome.webm" contronls id="sourceAudio"></audio>
+    <video
+      src="chrome.webm"
+      contronls
+      playsinline
+      id="sourceVideo"
+      style="display: none"
+    ></video>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script type="module">
-      sourceAudio.addEventListener("canplay", async () => {
-        const source = sourceAudio.captureStream();
+      sourceVideo.addEventListener("canplay", async () => {
+        const source = sourceVideo.captureStream();
+        const videoTrack = source
+          .getTracks()
+          .filter((t) => t.kind === "video")[0];
         const audioTrack = source
           .getTracks()
           .filter((t) => t.kind === "audio")[0];
-        console.log("source ready", audioTrack, source.getTracks());
+        console.log("source ready");
 
-        const doCallPeer = new Peer("peerjs-issue-1035-doCall");
+        const doCallPeer = new Peer();
+        const getCalledPeer = new Peer();
+        const readyPeers = [];
+        let resolveBothReady;
+        const bothReady = new Promise(
+          (resolve) => (resolveBothReady = resolve)
+        );
+        function peerReady(id) {
+          readyPeers.push(id);
+          if (readyPeers.length === 2) {
+            resolveBothReady();
+          }
+        }
         doCallPeer.on("open", (id) => {
           console.log("doCallPeer on open", id);
-          const call = doCallPeer.call(
-            "peerjs-issue-1035-getCalled",
-            new MediaStream([audioTrack])
-          );
-          call.on("stream", (stream) => {
-            console.log("doCall on stream", stream.getTracks());
-          });
+          peerReady(id);
         });
+        getCalledPeer.on("open", (id) => {
+          console.log("doCallPeer on open", id);
+          peerReady(id);
+        });
+        await bothReady;
+
+        getCalledPeer.on("call", (connection) => {
+          connection.on("close", () => {
+            console.log("getCalled on close");
+          });
+          connection.on("stream", (stream) => {
+            console.log(
+              "getCalled on stream, tracks from doCall:",
+              stream.getTracks().map((t) => t.kind)
+            );
+            setTimeout(() => connection.close(), 1000);
+          });
+          console.log("getCalled answers with two tracks");
+          connection.answer(new MediaStream([videoTrack, audioTrack]));
+        });
+
+        async function callWithTrack(...tracks) {
+          let done;
+          console.log(
+            "doCall with ",
+            tracks.map((t) => t.kind)
+          );
+          const connection = doCallPeer.call(
+            getCalledPeer.id,
+            new MediaStream(tracks)
+          );
+          connection.on("close", () => {
+            console.log("doCall on close");
+            done();
+          });
+          connection.on("stream", (stream) => {
+            console.log(
+              "doCall on stream, tracks from getCalled:",
+              stream.getTracks().map((t) => t.kind)
+            );
+            setTimeout(() => connection.close(), 1200);
+          });
+          return new Promise((r) => (done = r));
+        }
+        await callWithTrack(audioTrack);
+        await callWithTrack(videoTrack);
+        await callWithTrack(audioTrack, videoTrack);
       });
     </script>
   </body>
